@@ -31,6 +31,7 @@ if run_clicked:
             zip_path = os.path.join(tmp, "invoices.zip")
             excel_path = os.path.join(tmp, "input.xlsx")
             out_path = os.path.join(tmp, "output.xlsx")
+            renamed_zip_path = os.path.join(tmp, "invoices_with_ids.zip")
 
             with open(zip_path, "wb") as f:
                 f.write(zip_file.getbuffer())
@@ -38,13 +39,15 @@ if run_clicked:
                 f.write(excel_file.getbuffer())
 
             try:
-                engine.run(zip_path, excel_path, out_path)
+                engine.run(zip_path, excel_path, out_path, renamed_zip_path)
             except Exception as e:
                 st.error(f"Something went wrong while processing: {e}")
                 st.stop()
 
             with open(out_path, "rb") as f:
                 result_bytes = f.read()
+            with open(renamed_zip_path, "rb") as f:
+                renamed_zip_bytes = f.read()
 
             # Pull a quick summary from the Reconciliation sheet for on-screen display
             wb = load_workbook(out_path)
@@ -68,17 +71,30 @@ if run_clicked:
     m3.metric("🟥 No PDF found", n_missing)
     m4.metric("⬜ Unused PDFs", n_unused)
 
-    st.download_button(
-        "⬇️ Download completed workbook",
-        data=result_bytes,
-        file_name="Upload_WITH_INVOICE_DETAILS.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary",
-    )
+    dl1, dl2 = st.columns(2)
+    with dl1:
+        st.download_button(
+            "⬇️ Download completed workbook",
+            data=result_bytes,
+            file_name="Upload_WITH_INVOICE_DETAILS.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+        )
+    with dl2:
+        st.download_button(
+            "⬇️ Download invoices (renamed with IDs)",
+            data=renamed_zip_bytes,
+            file_name="Invoices_with_IDs.zip",
+            mime="application/zip",
+        )
 
     st.caption(
-        "Open the 'Reconciliation' sheet in the downloaded file for the full "
-        "row-by-row breakdown, colour-coded the same way as above."
+        "Every invoice got a unique ID (e.g. INV-0001). The same ID is in the "
+        "**Unique Invoice ID** column on its matched row in the workbook, and "
+        "prefixed onto the filename in the invoices ZIP — sort the sheet by "
+        "that column and the ID will lead you straight to the right PDF. "
+        "Open the 'Reconciliation' sheet for the full row-by-row breakdown, "
+        "colour-coded the same way as above."
     )
 
 st.divider()
@@ -91,8 +107,11 @@ with st.expander("How matching works"):
 - Fills **Basic Amt / VAT / Invoice Value** only where those cells are blank —
   it never overwrites figures you've already entered.
 - Sets **Invoice (Y/N) = Y** on matched rows.
-- Adds detail columns: PDF File, Inv No (PDF), Inv Date (PDF), PDF Net/VAT/Gross,
-  Item Details (PDF).
+- Gives every invoice PDF a unique, sortable ID (INV-0001, INV-0002, ...).
+- Adds detail columns: **Unique Invoice ID**, PDF File, Inv No (PDF),
+  Inv Date (PDF), PDF Net/VAT/Gross, Item Details (PDF).
+- Hands back a copy of your invoices ZIP with each filename prefixed by its ID,
+  so the ID column in the sheet and the PDF filename always match.
 - Builds a colour-coded **Reconciliation** sheet: green = matched & amounts agree,
   yellow = matched but amount differs, red = ledger row with no invoice found,
   grey = invoice in the ZIP never used.
