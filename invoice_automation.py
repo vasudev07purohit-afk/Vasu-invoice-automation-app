@@ -67,8 +67,25 @@ COL_ALIASES = {
 }
 
 # New columns appended to the right of each sheet
-NEW_COLS = ["PDF File", "Inv No (PDF)", "Inv Date (PDF)",
+NEW_COLS = ["Unique Invoice ID", "PDF File", "Inv No (PDF)", "Inv Date (PDF)",
             "PDF Net/VAT/Gross", "Item Details (PDF)"]
+
+ID_PREFIX = "INV"   # unique IDs look like INV-0001, INV-0002, ...
+
+
+def assign_unique_ids(pdfs):
+    """Give every PDF a stable, sortable unique ID based on supplier folder
+    then filename, so re-running on the same invoice set reproduces the same
+    IDs."""
+    ordered = sorted(pdfs, key=lambda p: (p["supplier_folder"].lower(), p["file"].lower()))
+    for i, p in enumerate(ordered, start=1):
+        p["id"] = f"{ID_PREFIX}-{i:04d}"
+    return pdfs
+
+
+def renamed_filename(pdf):
+    """The filename used inside the renamed-invoices ZIP handed back to the user."""
+    return f"{pdf['id']}_{pdf['file']}"
 
 AMOUNT_TOLERANCE = 0.02          # £ tolerance when comparing ledger vs PDF amounts
 
@@ -302,7 +319,7 @@ def to_float(v):
 # =============================================================================
 #  MAIN
 # =============================================================================
-def run(zip_path, excel_path, out_path):
+def run(zip_path, excel_path, out_path, renamed_zip_path=None):
     print(f"[1/5] Extracting invoices from: {zip_path}")
     workdir = tempfile.mkdtemp(prefix="inv_")
     with zipfile.ZipFile(zip_path) as z:
@@ -312,6 +329,7 @@ def run(zip_path, excel_path, out_path):
 
     print("[2/5] Reading each PDF (invoice no, amounts, dates, line items)...")
     pdfs = [parse_pdf(p) for p in pdf_files]
+    assign_unique_ids(pdfs)
     pdf_index = build_pdf_index(pdfs)
 
     print(f"[3/5] Opening workbook: {excel_path}")
@@ -387,6 +405,7 @@ def run(zip_path, excel_path, out_path):
                 ws.cell(r, cm["inv_yn"], "Y")
 
             # --- new detail columns ---
+            ws.cell(r, new_col_idx["Unique Invoice ID"], pdf["id"])
             ws.cell(r, new_col_idx["PDF File"], pdf["file"])
             ws.cell(r, new_col_idx["Inv No (PDF)"], pdf["inv_no"] or "")
             ws.cell(r, new_col_idx["Inv Date (PDF)"], pdf["date"] or "")
@@ -397,7 +416,7 @@ def run(zip_path, excel_path, out_path):
 
             status = "OK" if not mismatch else "AMOUNT MISMATCH"
             recon.append([sn, r, str(part)[:60], status,
-                          pdf["file"], pdf["inv_no"] or "", " ; ".join(mismatch)])
+                          pdf["id"], pdf["file"], pdf["inv_no"] or "", " ; ".join(mismatch)])
 
         print(f"        {sn}: matched {matched} row(s) to invoices")
 
@@ -406,23 +425,26 @@ def run(zip_path, excel_path, out_path):
         del wb["Reconciliation"]
     rc = wb.create_sheet("Reconciliation")
     headers = ["Sheet", "Excel Row", "Particulars (short)", "Status",
-               "PDF File", "Inv No", "Notes"]
+               "Unique Invoice ID", "PDF File", "Inv No", "Notes"]
     rc.append(headers)
     for c in range(1, len(headers) + 1):
         rc.cell(1, c).font = Font(bold=True, color="FFFFFF")
         rc.cell(1, c).fill = PatternFill("solid", start_color="4472C4")
     for row in recon:
+        # NO PDF FOUND rows built earlier have 7 items (no ID); pad them
+        if len(row) == 7:
+            row = row[:4] + [""] + row[4:]
         rc.append(row)
     # unused PDFs (present in ZIP but not tied to any ledger row)
     rc.append([])
     rc.append(["--- PDFs in ZIP not matched to any ledger row (later period / duplicate) ---"])
     for p in pdfs:
         if p["path"] not in used_pdfs:
-            rc.append(["", "", p["file"], "UNUSED PDF", p["file"], p["inv_no"] or "", ""])
-    for col in "ABCDEFG":
-        rc.column_dimensions[col].width = 26
+            rc.append(["", "", "", "UNUSED PDF", p["id"], p["file"], p["inv_no"] or "", ""])
+    for col in "ABCDEFGH":
+        rc.column_dimensions[col].width = 24
     rc.column_dimensions["C"].width = 48
-    rc.column_dimensions["G"].width = 40
+    rc.column_dimensions["H"].width = 40
 
     # colour-code status
     fills = {"OK": "C6EFCE", "AMOUNT MISMATCH": "FFEB9C",
@@ -430,8 +452,14 @@ def run(zip_path, excel_path, out_path):
     for r in range(2, rc.max_row + 1):
         st = rc.cell(r, 4).value
         if st in fills:
-            for c in range(1, 8):
+            for c in range(1, 9):
                 rc.cell(r, c).fill = PatternFill("solid", start_color=fills[st])
+
+    if renamed_zip_path:
+        print(f"      Building renamed-invoices ZIP -> {renamed_zip_path}")
+        with zipfile.ZipFile(renamed_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in pdfs:
+                zf.write(p["path"], arcname=renamed_filename(p))
 
     print(f"[5/5] Saving -> {out_path}")
     wb.save(out_path)
@@ -458,8 +486,9 @@ if __name__ == "__main__":
     ZIP_PATH   = "SUPPLIERWISE_INVOICE_DETAILS.zip"
     EXCEL_PATH = "Upload.xlsx"
     OUT_PATH   = "Upload_WITH_INVOICE_DETAILS.xlsx"
+    RENAMED_ZIP_PATH = "Invoices_with_IDs.zip"
     # -------------------------------------------------------------------------
     if len(sys.argv) >= 3:
         ZIP_PATH, EXCEL_PATH = sys.argv[1], sys.argv[2]
         OUT_PATH = sys.argv[3] if len(sys.argv) >= 4 else OUT_PATH
-    run(ZIP_PATH, EXCEL_PATH, OUT_PATH)
+    run(ZIP_PATH, EXCEL_PATH, OUT_PATH, RENAMED_ZIP_PATH)
