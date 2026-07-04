@@ -68,7 +68,7 @@ COL_ALIASES = {
 
 # New columns appended to the right of each sheet
 NEW_COLS = ["Unique Invoice ID", "PDF File", "Inv No (PDF)", "Inv Date (PDF)",
-            "PDF Net/VAT/Gross", "Item Details (PDF)"]
+            "PDF Net", "PDF VAT", "PDF Gross", "Item Details (PDF)"]
 
 ID_PREFIX = "INV"   # unique IDs look like INV-0001, INV-0002, ...
 
@@ -409,9 +409,9 @@ def run(zip_path, excel_path, out_path, renamed_zip_path=None):
             ws.cell(r, new_col_idx["PDF File"], pdf["file"])
             ws.cell(r, new_col_idx["Inv No (PDF)"], pdf["inv_no"] or "")
             ws.cell(r, new_col_idx["Inv Date (PDF)"], pdf["date"] or "")
-            nvg = " / ".join("" if v is None else f"{v:.2f}"
-                             for v in (pdf["net"], pdf["vat"], pdf["total"]))
-            ws.cell(r, new_col_idx["PDF Net/VAT/Gross"], nvg)
+            ws.cell(r, new_col_idx["PDF Net"], pdf["net"])
+            ws.cell(r, new_col_idx["PDF VAT"], pdf["vat"])
+            ws.cell(r, new_col_idx["PDF Gross"], pdf["total"])
             ws.cell(r, new_col_idx["Item Details (PDF)"], pdf["items"] or "")
 
             status = "OK" if not mismatch else "AMOUNT MISMATCH"
@@ -492,3 +492,4 @@ if __name__ == "__main__":
         ZIP_PATH, EXCEL_PATH = sys.argv[1], sys.argv[2]
         OUT_PATH = sys.argv[3] if len(sys.argv) >= 4 else OUT_PATH
     run(ZIP_PATH, EXCEL_PATH, OUT_PATH, RENAMED_ZIP_PATH)
+ 
