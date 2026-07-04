@@ -109,7 +109,8 @@ with st.expander("How matching works"):
 - Sets **Invoice (Y/N) = Y** on matched rows.
 - Gives every invoice PDF a unique, sortable ID (INV-0001, INV-0002, ...).
 - Adds detail columns: **Unique Invoice ID**, PDF File, Inv No (PDF),
-  Inv Date (PDF), PDF Net/VAT/Gross, Item Details (PDF).
+  Inv Date (PDF), **PDF Net**, **PDF VAT**, **PDF Gross** (each as its own
+  number, ready for formulas/pivot tables), and Item Details (PDF).
 - Hands back a copy of your invoices ZIP with each filename prefixed by its ID,
   so the ID column in the sheet and the PDF filename always match.
 - Builds a colour-coded **Reconciliation** sheet: green = matched & amounts agree,
